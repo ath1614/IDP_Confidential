@@ -63,6 +63,17 @@ def run_ocr_pipeline(input_folder):
 
         PretrainedConfig.__getattribute__ = safe_getattribute
 
+        # Patch for ROPE_INIT_FUNCTIONS issue (KeyError: 'default')
+        try:
+            from surya.common.surya.decoder import ROPE_INIT_FUNCTIONS
+            if "default" not in ROPE_INIT_FUNCTIONS:
+                # Fallback to 'linear' or first available
+                fallback_key = "linear" if "linear" in ROPE_INIT_FUNCTIONS else list(ROPE_INIT_FUNCTIONS.keys())[0]
+                ROPE_INIT_FUNCTIONS["default"] = ROPE_INIT_FUNCTIONS[fallback_key]
+                logger.warning(f"Patched ROPE_INIT_FUNCTIONS: Mapped 'default' to '{fallback_key}'")
+        except Exception as e:
+            logger.warning(f"Failed to patch ROPE_INIT_FUNCTIONS: {e}")
+
         # Load Predictors (Surya 0.17.1 API)
         foundation_predictor = FoundationPredictor()
         det_predictor = DetectionPredictor()
