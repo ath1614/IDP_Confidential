@@ -31,9 +31,9 @@ def run_ocr_pipeline(input_folder):
     try:
         from PIL import Image
         from surya.ocr import run_ocr
-        from surya.model.detection import segformer
-        from surya.model.recognition.model import load_model
-        from surya.model.recognition.processor import load_processor
+        # Updated imports for Surya 0.6.0+ compatibility
+        from surya.model.detection.model import load_model as load_det_model, load_processor as load_det_processor
+        from surya.model.recognition.model import load_model as load_rec_model, load_processor as load_rec_processor
         import torch
     except ImportError as e:
         logger.error(f"Failed to import OCR dependencies: {e}")
@@ -47,9 +47,13 @@ def run_ocr_pipeline(input_folder):
     # Load models once
     logger.info("Loading Surya OCR models...")
     try:
-        # Note: Surya API might vary slightly depending on version, adjusting for standard usage
-        det_processor, det_model = segformer.load_processor(), segformer.load_model()
-        rec_model, rec_processor = load_model(), load_processor()
+        # Load Detection Model
+        det_processor = load_det_processor()
+        det_model = load_det_model()
+        
+        # Load Recognition Model
+        rec_model = load_rec_model()
+        rec_processor = load_rec_processor()
     except Exception as e:
         logger.error(f"Error loading models: {e}")
         sys.exit(1)
