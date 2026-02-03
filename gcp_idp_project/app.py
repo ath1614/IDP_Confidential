@@ -30,11 +30,12 @@ def run_ocr_pipeline(input_folder):
     # Lazy import to ensure separation
     try:
         from PIL import Image
-        from surya.ocr import run_ocr
-        # Updated imports for Surya 0.6.0+ compatibility
-        from surya.model.detection.model import load_model as load_det_model, load_processor as load_det_processor
-        from surya.model.recognition.model import load_model as load_rec_model, load_processor as load_rec_processor
+        from surya.detection import DetectionPredictor
+        from surya.recognition import RecognitionPredictor
+        from surya.foundation import FoundationPredictor
+        from surya.common.surya.schema import TaskNames
         import torch
+        import pypdfium2 as pdfium
     except ImportError as e:
         logger.error(f"Failed to import OCR dependencies: {e}")
         sys.exit(1)
@@ -47,58 +48,15 @@ def run_ocr_pipeline(input_folder):
     # Load models once
     logger.info("Loading Surya OCR models...")
     try:
-        # Load Detection Model
-        det_processor = load_det_processor()
-        det_model = load_det_model()
-        
-        # Load Recognition Model
-        rec_model = load_rec_model()
-        rec_processor = load_rec_processor()
+        # Load Predictors (Surya 0.17.1 API)
+        foundation_predictor = FoundationPredictor()
+        det_predictor = DetectionPredictor()
+        rec_predictor = RecognitionPredictor(foundation_predictor)
     except Exception as e:
         logger.error(f"Error loading models: {e}")
         sys.exit(1)
 
     # Process files
-    # Assuming input_folder contains PDF files or subdirectories of cases
-    # The user requirements say: "Save: output/<case_id>/ocr/..."
-    # So we should treat subfolders in input_folder as cases or files as cases?
-    # "ingest/apar/" and "ingest/disciplinary/..." are the inputs.
-    # If input is "ingest/apar", then files inside are the documents.
-    # Let's assume each file is a "case" or "document" for now, or if input is a folder of files.
-    # The requirement says "output/<case_id>/". If input is a file "doc1.pdf", case_id is "doc1".
-    
-    # Process files
-    # Iterate through all PDFs in the input folder
-    files = list(input_path.rglob("*.pdf"))
-    if not files:
-        logger.warning(f"No PDF files found in {input_folder}")
-        return
-
-    # Group files by case_id if possible, or treat input_folder as the case root?
-    # If input is "ingest/disciplinary/case1", then case_id is "case1".
-    # If input is "ingest/apar", then each file is a case?
-    # Let's assume the user passes the specific case folder or a root containing cases.
-    # "python app.py --mode ocr --input <folder>"
-    # If <folder> is "ingest/disciplinary/case_001", then case_id is "case_001".
-    
-    # We will assume the input_folder IS the case folder for simplicity, 
-    # OR we treat subfolders as cases.
-    # Given the strict structure "ingest/disciplinary/brief_background/...", 
-    # it seems "ingest/disciplinary" contains categories, not cases directly?
-    # Or "ingest/disciplinary/<case_id>/brief_background"?
-    # The prompt structure:
-    # ingest/
-    #   apar/
-    #   disciplinary/
-    #       brief_background/
-    #       po_brief/
-    #       ...
-    # This implies ALL disciplinary documents for ALL cases might be mixed, OR
-    # "ingest/disciplinary" is for ONE case?
-    # "2️⃣ Disciplinary Case Documents ... Documents are pre-grouped into folders: Brief Background..."
-    # This phrasing suggests a single case structure or a standard structure for cases.
-    
-    # Let's assume input_folder points to a specific CASE ROOT.
     case_id = input_path.name
     output_dir = Path("output") / case_id
     ocr_output_dir = output_dir / "ocr"
@@ -106,14 +64,15 @@ def run_ocr_pipeline(input_folder):
     
     full_text_content = []
     
-    # Sort files to maintain some order
+    files = list(input_path.rglob("*.pdf"))
+    if not files:
+        logger.warning(f"No PDF files found in {input_folder}")
+        return
+
     files.sort()
-    
     global_page_count = 0
 
     for file_path in files:
-        # Determine category based on parent folder relative to input_path
-        # e.g. input="case1", file="case1/brief_background/doc.pdf" -> category="brief_background"
         try:
             rel_path = file_path.relative_to(input_path)
             category = rel_path.parent.name if rel_path.parent != Path(".") else "general"
@@ -123,8 +82,6 @@ def run_ocr_pipeline(input_folder):
         logger.info(f"Processing {file_path.name} (Category: {category})")
         
         try:
-            import pypdfium2 as pdfium
-            
             pdf = pdfium.PdfDocument(str(file_path))
             doc_text = []
             
@@ -132,17 +89,21 @@ def run_ocr_pipeline(input_folder):
                 global_page_count += 1
                 image = page.render(scale=2).to_pil() 
                 
-                # Run OCR
-                predictions = run_ocr([image], [list(image.size)], det_model, det_processor, rec_model, rec_processor)
+                # Run OCR with new API
+                # TaskNames.ocr_with_boxes is the standard task
+                predictions = rec_predictor(
+                    [image], 
+                    [TaskNames.ocr_with_boxes], 
+                    det_predictor
+                )
                 
                 # Extract text
                 page_text = ""
                 if predictions and len(predictions) > 0:
-                    text_lines = [l.text_content for l in predictions[0].text_lines]
+                    # predictions[0] is the result for the single image we passed
+                    text_lines = [l.text for l in predictions[0].text_lines]
                     page_text = "\n".join(text_lines)
                 
-                # Save page text with category prefix in filename for traceability
-                # e.g. brief_background_doc1_page1.txt
                 safe_filename = f"{category}_{file_path.stem}_p{i+1}.txt".replace(" ", "_")
                 with open(ocr_output_dir / safe_filename, "w", encoding="utf-8") as f:
                     f.write(page_text)
@@ -153,14 +114,12 @@ def run_ocr_pipeline(input_folder):
                 del image
                 gc.collect()
             
-            # Append to full text with section header
             full_text_content.append(f"\n=== SECTION: {category} | FILE: {file_path.name} ===\n" + "\n".join(doc_text))
             
         except Exception as e:
             logger.error(f"Failed to process {file_path}: {e}")
             continue
             
-    # Save full text
     with open(output_dir / "full_text.txt", "w", encoding="utf-8") as f:
         f.write("\n".join(full_text_content))
 
