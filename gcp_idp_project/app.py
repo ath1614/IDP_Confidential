@@ -68,13 +68,17 @@ def run_ocr_pipeline(input_folder):
         from transformers import PreTrainedModel
         if not hasattr(PreTrainedModel, "all_tied_weights_keys"):
             def get_all_tied_weights_keys(self):
-                return getattr(self, "_all_tied_weights_keys_patched", getattr(self, "_tied_weights_keys", []))
+                val = getattr(self, "_all_tied_weights_keys_patched", getattr(self, "_tied_weights_keys", []))
+                # Fix: transformers expects a dict-like object with .keys(), but older models might have a list
+                if isinstance(val, list):
+                    return {k: k for k in val}
+                return val
 
             def set_all_tied_weights_keys(self, value):
                 self._all_tied_weights_keys_patched = value
 
             PreTrainedModel.all_tied_weights_keys = property(get_all_tied_weights_keys, set_all_tied_weights_keys)
-            logger.warning("Patched PreTrainedModel.all_tied_weights_keys with getter/setter")
+            logger.warning("Patched PreTrainedModel.all_tied_weights_keys with getter/setter and list conversion")
 
         # Patch for ROPE_INIT_FUNCTIONS issue (KeyError: 'default')
         try:
