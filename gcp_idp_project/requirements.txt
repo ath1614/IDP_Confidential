@@ -1,6 +1,6 @@
-surya-ocr
+surya-ocr==0.17.1
 transformers
-torch
+torch>=2.7.0,<3.0.0
 accelerate
 Pillow
 python-docx
@@ -9,3 +9,5 @@ numpy
 sentencepiece
 pypdfium2
 protobuf
+requests
+opencv-python-headless
