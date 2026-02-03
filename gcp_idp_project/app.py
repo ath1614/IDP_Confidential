@@ -80,6 +80,30 @@ def run_ocr_pipeline(input_folder):
             PreTrainedModel.all_tied_weights_keys = property(get_all_tied_weights_keys, set_all_tied_weights_keys)
             logger.warning("Patched PreTrainedModel.all_tied_weights_keys with getter/setter and list conversion")
 
+        # Patch for SuryaModel.tie_weights TypeError (unexpected keyword argument 'missing_keys')
+        try:
+            # Try to import SuryaModel to patch it
+            # Note: The exact import path depends on surya version, but based on traceback it's likely here:
+            from surya.common.surya.model import SuryaModel
+            
+            original_tie_weights = SuryaModel.tie_weights
+
+            def safe_tie_weights(self, *args, **kwargs):
+                try:
+                    return original_tie_weights(self, *args, **kwargs)
+                except TypeError:
+                    # If unexpected kwargs (like missing_keys), try calling without them
+                    # Transformers < 4.45 didn't pass these args
+                    return original_tie_weights(self)
+
+            SuryaModel.tie_weights = safe_tie_weights
+            logger.warning("Patched SuryaModel.tie_weights for compatibility")
+        except ImportError:
+            # Fallback if import path differs
+            logger.warning("Could not find SuryaModel to patch tie_weights - proceeding anyway")
+        except Exception as e:
+            logger.warning(f"Failed to patch SuryaModel.tie_weights: {e}")
+
         # Patch for ROPE_INIT_FUNCTIONS issue (KeyError: 'default')
         try:
             from surya.common.surya.decoder import ROPE_INIT_FUNCTIONS
