@@ -64,13 +64,17 @@ def run_ocr_pipeline(input_folder):
         PretrainedConfig.__getattribute__ = safe_getattribute
 
         # Patch for 'all_tied_weights_keys' AttributeError
+        # We need a property that can be both set (by post_init) and read (by finalize_load)
         from transformers import PreTrainedModel
         if not hasattr(PreTrainedModel, "all_tied_weights_keys"):
-            @property
-            def all_tied_weights_keys(self):
-                return getattr(self, "_tied_weights_keys", [])
-            PreTrainedModel.all_tied_weights_keys = all_tied_weights_keys
-            logger.warning("Patched PreTrainedModel.all_tied_weights_keys")
+            def get_all_tied_weights_keys(self):
+                return getattr(self, "_all_tied_weights_keys_patched", getattr(self, "_tied_weights_keys", []))
+
+            def set_all_tied_weights_keys(self, value):
+                self._all_tied_weights_keys_patched = value
+
+            PreTrainedModel.all_tied_weights_keys = property(get_all_tied_weights_keys, set_all_tied_weights_keys)
+            logger.warning("Patched PreTrainedModel.all_tied_weights_keys with getter/setter")
 
         # Patch for ROPE_INIT_FUNCTIONS issue (KeyError: 'default')
         try:
