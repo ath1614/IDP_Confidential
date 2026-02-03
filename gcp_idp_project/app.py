@@ -63,6 +63,15 @@ def run_ocr_pipeline(input_folder):
 
         PretrainedConfig.__getattribute__ = safe_getattribute
 
+        # Patch for 'all_tied_weights_keys' AttributeError
+        from transformers import PreTrainedModel
+        if not hasattr(PreTrainedModel, "all_tied_weights_keys"):
+            @property
+            def all_tied_weights_keys(self):
+                return getattr(self, "_tied_weights_keys", [])
+            PreTrainedModel.all_tied_weights_keys = all_tied_weights_keys
+            logger.warning("Patched PreTrainedModel.all_tied_weights_keys")
+
         # Patch for ROPE_INIT_FUNCTIONS issue (KeyError: 'default')
         try:
             from surya.common.surya.decoder import ROPE_INIT_FUNCTIONS
