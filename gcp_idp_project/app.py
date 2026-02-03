@@ -48,6 +48,21 @@ def run_ocr_pipeline(input_folder):
     # Load models once
     logger.info("Loading Surya OCR models...")
     try:
+        # Patch for transformers config issue (Surya 0.17.1 / transformers compatibility)
+        # Some newer transformers versions or model configs might miss 'pad_token_id'
+        from transformers import PretrainedConfig
+        original_getattribute = PretrainedConfig.__getattribute__
+
+        def safe_getattribute(self, key):
+            try:
+                return original_getattribute(self, key)
+            except AttributeError:
+                if key == 'pad_token_id':
+                    return None
+                raise
+
+        PretrainedConfig.__getattribute__ = safe_getattribute
+
         # Load Predictors (Surya 0.17.1 API)
         foundation_predictor = FoundationPredictor()
         det_predictor = DetectionPredictor()
