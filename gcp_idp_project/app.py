@@ -68,7 +68,7 @@ def run_ocr_pipeline(input_folder):
         det_predictor = DetectionPredictor()
         rec_predictor = RecognitionPredictor(foundation_predictor)
     except Exception as e:
-        logger.error(f"Error loading models: {e}")
+        logger.exception("Error loading models")
         sys.exit(1)
 
     # Process files
