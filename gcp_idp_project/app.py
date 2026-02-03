@@ -69,8 +69,17 @@ def run_ocr_pipeline(input_folder):
             if "default" not in ROPE_INIT_FUNCTIONS:
                 # Fallback to 'linear' or first available
                 fallback_key = "linear" if "linear" in ROPE_INIT_FUNCTIONS else list(ROPE_INIT_FUNCTIONS.keys())[0]
-                ROPE_INIT_FUNCTIONS["default"] = ROPE_INIT_FUNCTIONS[fallback_key]
-                logger.warning(f"Patched ROPE_INIT_FUNCTIONS: Mapped 'default' to '{fallback_key}'")
+                original_fn = ROPE_INIT_FUNCTIONS[fallback_key]
+
+                def safe_rope_init_fn(config, device, *args, **kwargs):
+                    # Ensure factor exists in rope_scaling
+                    if hasattr(config, "rope_scaling") and config.rope_scaling:
+                        if isinstance(config.rope_scaling, dict) and "factor" not in config.rope_scaling:
+                            config.rope_scaling["factor"] = 1.0
+                    return original_fn(config, device, *args, **kwargs)
+
+                ROPE_INIT_FUNCTIONS["default"] = safe_rope_init_fn
+                logger.warning(f"Patched ROPE_INIT_FUNCTIONS: Mapped 'default' to safe wrapper around '{fallback_key}'")
         except Exception as e:
             logger.warning(f"Failed to patch ROPE_INIT_FUNCTIONS: {e}")
 
