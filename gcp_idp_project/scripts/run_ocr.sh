@@ -14,14 +14,25 @@ fi
 
 INPUT_FOLDER=$1
 
-# Activate venv
-if [ -d "$PROJECT_ROOT/venv" ]; then
-    source "$PROJECT_ROOT/venv/bin/activate"
-elif [ -d "$SCRIPT_DIR/venv" ]; then
-    source "$SCRIPT_DIR/venv/bin/activate"
+# Check if a virtual environment is already active
+if [ -z "$VIRTUAL_ENV" ]; then
+    # No venv active, try to find and activate one
+    if [ -d "$PROJECT_ROOT/venv" ]; then
+        echo "Activating venv at $PROJECT_ROOT/venv"
+        source "$PROJECT_ROOT/venv/bin/activate"
+    elif [ -d "$SCRIPT_DIR/venv" ]; then
+        echo "Activating venv at $SCRIPT_DIR/venv"
+        source "$SCRIPT_DIR/venv/bin/activate"
+    else
+        echo "Warning: No virtual environment found. Running with system python."
+    fi
+else
+    echo "Using active virtual environment: $VIRTUAL_ENV"
 fi
 
+echo "Python Executable: $(which python3)"
 echo "Running OCR Mode on $INPUT_FOLDER..."
-# Run app.py from Project Root to ensure relative paths work if app.py uses them
+
+# Run app.py from Project Root
 cd "$PROJECT_ROOT"
 python3 app.py --mode ocr --input "$INPUT_FOLDER"
