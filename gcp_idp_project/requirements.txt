@@ -1,0 +1,11 @@
+surya-ocr
+transformers
+torch
+accelerate
+Pillow
+python-docx
+pandas
+numpy
+sentencepiece
+pypdfium2
+protobuf
